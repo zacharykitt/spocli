@@ -1,4 +1,4 @@
-import requests, base64, datetime, time, urllib, sys, os
+import requests, base64, datetime, time, urllib, sys, os, argparse
 
 class User(object):
 	def __init__(self):
@@ -57,71 +57,66 @@ class Session(object):
 			self.__get_auth_token()
 			self.__set_header()
 
-class SpotifyApi(object):
-	@staticmethod
-	def get_featured_playlists(user):
+class Browse(object):
+	def featured_playlists(user):
 		user.session.is_token_valid()
 		url = 'https://api.spotify.com/v1/browse/featured-playlists'
 		user_params = user.get_base_params()
 		res = requests.get(url, headers=user.session.header, params=user_params)
 		featured_playlist_dict = res.json()
-		return featured_playlist_dict
-
-	@staticmethod
-	def output_featured_playlists(featured_playlist_dict):
 		for item in featured_playlist_dict['playlists']['items']:
 			print('title: {0: <50} | uri: {1}'.format(item['name'], item['uri']))
 
-	@staticmethod
-	def artist_search(user, query):
+class Search(object):
+	def find_artists(user, query):
 		user.session.is_token_valid()
 		url = 'https://api.spotify.com/v1/search'
 		endpoint_params = {'q': query, 'type': 'artist', 'limit': 5}
 		res = requests.get(url, headers=user.session.header, params=endpoint_params)
+		print(endpoint_params)
 		search_result_dict = res.json()
-		return search_result_dict
-
-	@staticmethod
-	def output_artist_search(search_result_dict):
 		for item in search_result_dict['artists']['items']:
 			print('name: {0: <51} | id: {1}'.format(item['name'], item['id']))
 
-	@staticmethod
-	def list_albums_by_artist(user, artist_id):
+class Artist(object):
+	def list_albums(user, artist_id):
 		user.session.is_token_valid()
 		url = 'https://api.spotify.com/v1/artists/{0}/albums'.format(artist_id)
 		endpoint_params = {'album_type': 'album', 'market': 'US'}
 		res = requests.get(url, headers=user.session.header, params=endpoint_params)
 		album_dict = res.json()
-		return album_dict
-
-	@staticmethod
-	def output_albums(albums_dict):
-		for item in albums_dict['items']:
+		for item in album_dict['items']:
 			print('name: {0: <51} | id: {1}'.format(item['name'], item['uri']))		
 
-def cli_menu():
-	input_var = 5
-	while input_var > 4:
-		print('Search by artist name [1], list albums by artist [2], or list featured playlists [3] or quit [4].')
-		input_var = int(input('Choose a number: '))
-	return input_var
+
+parser = argparse.ArgumentParser(description='Access the Spotify API from the command line.')
+#parser.add_argument('--res', nargs='?', help='Select which API resource to interact with.',					
+#choices=['albums', 'artists', 'browse', 'search', 'playlists'])
+subparsers = parser.add_subparsers(help='Learn more about the various API categories.', dest='category')
+
+parser_artists = subparsers.add_parser('artists', help='Interact with the Artists resource.')
+parser_artists.add_argument('--id', nargs='?', help='The Spotify artist ID.', required=True)
+parser_artists.add_argument('--endpoint', nargs='?', help='Select the resource\'s endpoint.',
+					choices=['related', 'albums'])
+
+parse_search = subparsers.add_parser('search', help='Search for artists, albums, and tracks.')
+parse_search.add_argument('--q', nargs='?', help='The search query.', required=True)
+parse_search.add_argument('--type', nargs='?', help="The resource to search through.",
+					choices=['album', 'artist', 'track'])
+
+args = parser.parse_args()
 
 user = User()
-x = cli_menu()
 
-if x == 0:
-	exit()
-elif x == 1:
-	input_var = input('Enter search term for artist: ')
-	search_result_dict = SpotifyApi.artist_search(user, input_var)
-	SpotifyApi.output_artist_search(search_result_dict)
-elif x == 2:
-	input_var = input('List albums by artist ID: ')
-	albums_dict = SpotifyApi.list_albums_by_artist(user, input_var)
-	SpotifyApi.output_albums(albums_dict)
-elif x == 3:
-	featured_playlist_dict = SpotifyApi.get_featured_playlists(user)
-	SpotifyApi.output_featured_playlists(featured_playlist_dict)
+if args.category == 'artists':
+	if args.endpoint == 'related':
+		pass
+	else:
+		Artist.list_albums(user, args.id)
+elif args.category == 'browse':
+	pass
+elif args.category == 'search':
+	if args.type == 'artist':
+		Search.find_artists(user, args.q)
 else:
-	exit()
+	pass
