@@ -77,27 +77,39 @@ class Player(object):
 		session_bus = dbus.SessionBus()
 		connection_name = 'org.mpris.MediaPlayer2.spotify'
 		connection_path = '/org/mpris/MediaPlayer2'
-		connection_type = 'org.mpris.MediaPlayer2.Player'
+		self.app_interface_name = 'org.mpris.MediaPlayer2'
+		self.player_interface_name = 'org.mpris.MediaPlayer2.Player'
+		self.props_interface_name = 'org.freedesktop.DBus.Properties'
+		
 		proxy = session_bus.get_object(connection_name, connection_path)
-		self.interface = dbus.Interface(proxy, connection_type)
+
+		self.player_interface = dbus.Interface(proxy, self.player_interface_name)
+		self.props_interface = dbus.Interface(proxy, self.props_interface_name)
+		self.app_interface = dbus.Interface(proxy, self.app_interface_name)
 		# note to self: see proxy commands with print(proxy.Introspect())
 
 	def playpause(self):
-		self.interface.PlayPause()
+		self.player_interface.PlayPause()
 
 	def stop(self):
-		self.interface.Stop()
+		self.player_interface.Stop()
 
 	def next(self):
-		self.interface.Next()
+		self.player_interface.Next()
 
 	def previous(self):
 		# only resets track position
-		self.interface.Previous()
+		self.player_interface.Stop()
+		self.player_interface.Previous()
+		self.player_interface.PlayPause()
 
 	def open(self, uri):
-		self.interface.OpenUri(uri)
+		self.player_interface.OpenUri(uri)
 
+	def info(self):
+		metadata = self.props_interface.Get(self.player_interface_name, 'Metadata')
+		print('Track: {0}\nAlbum: {1}\nArtist: {2}'.format(metadata['xesam:title'], 
+								metadata['xesam:album'], metadata['xesam:artist'][0]))
 
 # Cut down on some repititon by abstracting parts of the API call and response.
 # Currently each API call creates a new user object since the program terminates
@@ -240,7 +252,7 @@ def build_parser():
 
 	parser_player = subparsers.add_parser('player', help='Control the desktop Spotify application.')
 	parser_player.add_argument('--command', nargs='?', help='Enter the player command.',
-						choices=['play', 'pause', 'stop', 'next', 'previous', 'open'])
+						choices=['play', 'pause', 'stop', 'next', 'previous', 'open', 'info'])
 	parser_player.add_argument('--uri', nargs='?', help='The Spotify resource\'s URI.')
 
 	return parser
@@ -292,6 +304,8 @@ def main():
 			player.previous()
 		elif args.command == 'open':
 			player.open(args.uri)
+		elif args.command == 'info':
+			player.info()
 		else:
 			pass
 
