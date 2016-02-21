@@ -125,8 +125,8 @@ class ApiCall(object):
 	def __extract_iterable_object(self, keys):
 		iterable = self.res
 
-		for key in keys:
-			iterable = iterable[key]
+		for k in keys:
+			iterable = iterable[k]
 
 		return iterable
 
@@ -135,12 +135,11 @@ class ApiCall(object):
 		iterable = self.__extract_iterable_object(keys[0])
 
 		# specifies which values to extract from the iterable items
-		value_keys = keys[1]
+		values = keys[1]
 
 		# take an iterable of dicts and get the key values to extract data from
-		for item in iterable:
-			print('{0}: {1: <51} | {2}: {3}'.format(value_keys[0], item[value_keys[0]], 
-													value_keys[1], item[value_keys[1]]))
+		for i in iterable:
+			print('{0}: {1: <51} | {2}: {3}'.format(values[0], i[values[0]], values[1], i[values[1]]))
 
 
 
