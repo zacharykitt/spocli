@@ -1,5 +1,8 @@
-# general libraries
-import requests, os, base64, time, datetime, sys, argparse
+import requests, os, base64, time, datetime, sys, argparse, dbus
+
+# The User class may be overkill for the current version of this script,
+# but it could be useful in a more robust program to have a persistent
+# user object.
 
 class User(object):
 	def __init__(self):
@@ -13,75 +16,126 @@ class User(object):
 	def get_base_params(self):
 		return {'country': self.country, 'locale': self.locale, 'timestamp': self.get_local_time()}
 
-# the Session class allows for the management of auth tokens
-class Session(object):
-	def __init__(self):
-		self.__get_auth_token()
-		self.__set_header()
 
+
+# The Session class allows for tokens to be created and saved to the current
+# user. Header information for each request is also stored within the session
+# object.
+
+class Session(object):
+	# constant values for token endpoint
+	url = "https://accounts.spotify.com/api/token"
+	data = {'grant_type': 'client_credentials'}
+
+	def __init__(self):
+		self.encoded_credentials = self.__encode_credentials(os.environ['SPOTIFY_CREDS'])
+		self.token_dict = self.__get_auth_token()
+		self.header = self.__set_header()
+
+	# API keys need to be encoded in base64
+	def __encode_credentials(self, credentials):
+		credentials = bytes(credentials, encoding='utf-8')
+		return base64.b64encode(credentials)
 
 	def __get_auth_token(self):
-		# API keys need to be encoded in base64
-		credentials = bytes(os.environ['SPOTIFY_CREDS'], encoding='utf-8')
-		encoded_credentials = base64.b64encode(credentials)
-
-		# required body param
-		data = {'grant_type': 'client_credentials'}
-
 		# pass credentials in request header
-		headers = {'Authorization': 'Basic %s' % encoded_credentials.decode('utf-8')}
+		headers = {'Authorization': 'Basic %s' % self.encoded_credentials.decode('utf-8')}
 
 		# make request to proper endpoint 
-		url = "https://accounts.spotify.com/api/token"
-		res = requests.post(url, headers=headers, data=data)
+		res = requests.post(self.url, headers=headers, data=self.data)
 		
 		token_dict = res.json()
 
-		# add a created_at value for checking expiration
+		# add a created_at value for checking expiratio(
 		token_dict['created_at'] = int(time.time())
 
-		self.token_dict = token_dict
+		return token_dict
 
 
 	# set the session header used for requests
 	def __set_header(self):
 		auth_string = '{0} {1}'.format(self.token_dict['token_type'], self.token_dict['access_token'])
-		self.header = {'Authorization': auth_string}	
+		return {'Authorization': auth_string}	
 
 
-	# tokens expire after 3600 s
+	# tokens expire after 3600s
 	def is_token_valid(self):
 		# get current time and leave room for error
-		current = int(time.time()) + 1
-		token_expiration = self.token_dict['created_at'] + 3600
+		current = int(time.time())
+		token_expiration = self.token_dict['created_at'] + 3500 # NOT a typo
 		if current >= token_expiration:
 			self.__get_auth_token()
 			self.__set_header()
 
-# a class for API calls
+
+
+# Create a dbus connection to the desktop Spotify application. Therefore this
+# feature will only work on linux desktops for the timebeing.
+
+class Player(object):
+	def __init__(self):
+		session_bus = dbus.SessionBus()
+		connection_name = 'org.mpris.MediaPlayer2.spotify'
+		connection_path = '/org/mpris/MediaPlayer2'
+		connection_type = 'org.mpris.MediaPlayer2.Player'
+		proxy = session_bus.get_object(connection_name, connection_path)
+		self.interface = dbus.Interface(proxy, connection_type)
+		# note to self: see proxy commands with print(proxy.Introspect())
+
+	def playpause(self):
+		self.interface.PlayPause()
+
+	def stop(self):
+		self.interface.Stop()
+
+	def next(self):
+		self.interface.Next()
+
+	def previous(self):
+		# only resets track position
+		self.interface.Previous()
+
+	def open(self, uri):
+		self.interface.OpenUri(uri)
+
+
+# Cut down on some repititon by abstracting parts of the API call and response.
+# Currently each API call creates a new user object since the program terminates
+# upon completion of a request. A persistent version of this program would
+# require that the user object be passed to it.
+
 class ApiCall(object):
-	def __init__(self, params, url):
+	def __init__(self, params, url, user = None):
+		if user is None:
+			user = User()
+		self.user = user
 		self.res = self.__get(params, url)
 
 	def __get(self, params, url):
 		# merge endpoint params with general params
-		user = User()
-		params.update(user.get_base_params())
-		user.session.is_token_valid()
-		res = requests.get(url, headers=user.session.header, params=params)
+		params.update(self.user.get_base_params())
+
+		# the following would only be necessary for a persistent version of 
+		# this program:
+		# self.user.session.is_token_valid()
+
+		res = requests.get(url, headers=self.user.session.header, params=params)
 		return res.json()
+
+	def __extract_iterable_object(self, keys):
+		iterable = self.res
+
+		for key in keys:
+			iterable = iterable[key]
+
+		return iterable
 
 	def output_collection(self, keys):
 		# extract the iterable object from the response
-		iterable_keys = keys[0]
+		iterable = self.__extract_iterable_object(keys[0])
 
-		# specify which values to extract from the iterable items
+		# specifies which values to extract from the iterable items
 		value_keys = keys[1]
-
-		iterable = self.res
-
-		for key in iterable_keys:
-			iterable = iterable[key]
 
 		# take an iterable of dicts and get the key values to extract data from
 		for item in iterable:
@@ -90,12 +144,15 @@ class ApiCall(object):
 
 
 
-# below are API endpints mapped to functions
+# The following are functions that map to API endpoints. The endpoint structure 
+# is pretty repetitious but not constant, which has stopped be from being able 
+# to come up with a quick solution for abstracting endpoints. Functions seem 
+# like an okay choice since they mirror HTTP requests (verbs).
 
 def find(query, search_type):
 	# endpoint specific values
 	url = 'https://api.spotify.com/v1/search'
-	params = {'q': query, 'type': search_type, 'limit': 5}
+	params = {'q': query, 'type': search_type}
 	output_id = ((search_type + 's', 'items'), ('name', 'id'))
 	output_uri = ((search_type + 's', 'items'), ('name', 'uri'))
 
@@ -142,7 +199,7 @@ def artists_list_albums(id):
 	# endpoint specific values
 	url = 'https://api.spotify.com/v1/artists/{0}/albums'.format(id)
 	params = {'album_type': 'album', 'market': 'US'}
-	output = (('items', ), ('name', 'id'))
+	output = (('items', ), ('name', 'uri'))
 
 	res = ApiCall(params, url)
 	res.output_collection(output)
@@ -155,6 +212,12 @@ def artists_list_related(id):
 	
 	res = ApiCall(params, url)
 	res.output_collection(output)
+
+
+
+# This function builds the parser (using the argparse library). Each API 
+# category has been turned into its own subparser to allow for a semblance of 
+# organization.
 
 def build_parser():
 	# using the argparse library to simplify CLI set-up
@@ -176,7 +239,19 @@ def build_parser():
 						choices=['featured-playlists', 'new-releases', 'categories'])
 	parser_browse.add_argument('--id', nargs='?', help='The Spotify category ID.')
 
+	parser_player = subparsers.add_parser('player', help='Control the desktop Spotify application.')
+	parser_player.add_argument('--command', nargs='?', help='Enter the player command.',
+						choices=['play', 'pause', 'stop', 'next', 'previous', 'open'])
+	parser_player.add_argument('--uri', nargs='?', help='The Spotify resource\'s URI.')
+
 	return parser
+
+
+
+# Read the system arguments and perform the associated function. This could
+# maybe be refactored so that the API categories are objects and a constructor
+# calls the correct endpoint function based off the params passed to it. For
+# now nested conditional statements are acceptable (complexity is low).
 
 def main():
 	parser = build_parser()
@@ -204,6 +279,22 @@ def main():
 	# search subparser
 	elif args.category == 'search':
 		find(args.query, args.type)
+
+	elif args.category == 'player':
+		player = Player()
+
+		if args.command == 'play' or args.command == 'pause':
+			player.playpause()
+		elif args.command == 'stop':
+			player.stop()
+		elif args.command == 'next':
+			player.next()
+		elif args.command == 'previous':
+			player.previous()
+		elif args.command == 'open':
+			player.open(args.uri)
+		else:
+			pass
 
 	# show help
 	else:
