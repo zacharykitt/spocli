@@ -12,10 +12,10 @@ A command-line interface for interacting with the Spotify API and (for linux) th
 
 ### Browse
 
-* list featured playlists: `browse --(e)ndpoint featured-playlists`
-* list all categories: `browse --(e)ndpoint categories`
-* list a category's playlists: `browse --(e)ndpoint list-playlists --i(d) <category_id>`
-* list new album releases: `browse --(e)ndpoint new-releases`
+* list featured playlists: `browse --e(ndpoint) featured-playlists`
+* list all categories: `browse --e(ndpoint) categories`
+* list a category's playlists: `browse --e(ndpoint) list-playlists --i(d) <category_id>`
+* list new album releases: `browse --e(ndpoint) new-releases`
 
 
 ### Search
@@ -24,13 +24,13 @@ A command-line interface for interacting with the Spotify API and (for linux) th
 
 ### Player (linux only)
 
-* play player: `player --(c)ommand play`
-* pause player: `player --(c)ommand pause`
-* stop player: `player --(c)ommand stop`
-* next song: `player --(c)ommand next`
-* previous song: `player --(c)ommand prev`
-* open a specific item: `player --(c)ommand open --(u)ri <item_uri>`
-* list track info: `player --(c)ommand info`
+* play player: `player --c(ommand) play`
+* pause player: `player --c(ommand) pause`
+* stop player: `player --c(ommand) stop`
+* next song: `player --c(ommand) next`
+* previous song: `player --c(ommand) prev`
+* open a specific item: `player --c(ommand) open --u(ri) <item_uri>`
+* list track info: `player --c(ommand) info`
 
 ---
 
